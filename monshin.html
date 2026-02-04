@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>デジタル問診票システム (Shift_JIS版)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- QR Code Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+    <!-- Encoding Library for Shift_JIS conversion -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/encoding-japanese/2.0.0/encoding.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap');
+        body {
+            font-family: 'Noto Sans JP', sans-serif;
+            background-color: #f3f4f6;
+        }
+        .view-section {
+            display: none;
+        }
+        .view-section.active {
+            display: block;
+        }
+        .form-step {
+            display: none;
+        }
+        .form-step.active {
+            display: block;
+        }
+        #qrcodeContainer svg {
+            margin: 0 auto;
+            max-width: 100%;
+            height: auto;
+        }
+        .radio-group label {
+            cursor: pointer;
+            padding: 0.5rem;
+            border: 1px solid #e5e7eb;
+            border-radius: 0.5rem;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.875rem;
+        }
+        .radio-group input:checked + span {
+            color: #2563eb;
+            font-weight: bold;
+        }
+        .radio-group label:has(input:checked) {
+            border-color: #2563eb;
+            background-color: #eff6ff;
+        }
+        .required-mark::after {
+            content: "*";
+            color: #ef4444;
+            margin-left: 0.25rem;
+        }
+        /* Error state styling */
+        .input-error {
+            border-color: #ef4444 !important;
+            background-color: #fef2f2 !important;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+    <!-- Role Switcher -->
+    <div class="max-w-2xl mx-auto mb-4 flex justify-end">
+        <button onclick="switchMode('patient')" id="btnToPatient" class="text-xs bg-gray-200 px-3 py-1 rounded-l-md border border-gray-300 hover:bg-gray-300 transition-colors">患者モード</button>
+        <button onclick="switchMode('reception')" id="btnToReception" class="text-xs bg-gray-200 px-3 py-1 rounded-r-md border border-gray-300 border-l-0 hover:bg-gray-300 transition-colors">受付モード</button>
+    </div>
+
+    <!-- 1. Patient View -->
+    <div id="patientView" class="view-section active max-w-2xl mx-auto bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100">
+        <div class="bg-blue-600 p-6 text-white text-center">
+            <h1 class="text-2xl font-bold">デジタル問診票</h1>
+            <p class="text-sm mt-1 opacity-90">画面の指示に従って入力してください</p>
+        </div>
+        <div class="w-full bg-gray-200 h-2">
+            <div id="progress" class="bg-blue-400 h-2 transition-all duration-300" style="width: 33%;"></div>
+        </div>
+
+        <form id="medicalForm" class="p-6 space-y-6">
+            <!-- Step 1: Basic Info -->
+            <div id="step1" class="form-step active">
+                <h2 class="text-xl font-semibold mb-4 border-b pb-2 text-gray-800">基本情報</h2>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 required-mark">お名前</label>
+                        <input type="text" name="name" oninput="clearError(this)" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 border p-2 transition-colors outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">ふりがな</label>
+                        <input type="text" name="kana" placeholder="例：やまだ　たろう" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2 outline-none">
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 required-mark">生年月日</label>
+                            <input type="date" name="dob" oninput="clearError(this)" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2 transition-colors outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">性別</label>
+                            <select name="gender" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2 outline-none">
+                                <option value="男性">男性</option>
+                                <option value="女性">女性</option>
+                                <option value="その他">その他</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 required-mark">電話番号（半角）</label>
+                        <input type="tel" name="phone" inputmode="tel" oninput="clearError(this); toHalfWidth(this)" placeholder="090-0000-0000" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2 transition-colors outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 required-mark">住所</label>
+                        <input type="text" name="address" oninput="clearError(this)" placeholder="住所を入力してください" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2 transition-colors outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">当院を知った理由</label>
+                        <select name="referral" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2 outline-none">
+                            <option value="ホームページ">ホームページ</option>
+                            <option value="知人の紹介">知人の紹介</option>
+                            <option value="看板・通りがかり">看板・通りがかり</option>
+                            <option value="その他">その他</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="mt-8 flex justify-end">
+                    <button type="button" onclick="nextStep(2)" class="bg-blue-600 text-white px-8 py-2 rounded-lg font-bold hover:bg-blue-700 transition shadow-md">次へ</button>
+                </div>
+            </div>
+
+            <!-- Step 2: History & Temp -->
+            <div id="step2" class="form-step">
+                <h2 class="text-xl font-semibold mb-2 border-b pb-2 text-gray-800">既往・体温</h2>
+                <p class="text-xs text-gray-400 mb-4 font-medium text-left">※あてはまる項目がない場合や、記載することがない場合は、そのまま「次へ」進んでください。</p>
+                
+                <div class="space-y-6">
+                    <div>
+                        <label class="block text-sm font-bold text-blue-800 mb-2">指摘された症状・疾患</label>
+                        <div class="grid grid-cols-2 gap-2 mb-3">
+                            <label class="flex items-center space-x-2 p-2 border rounded hover:bg-gray-50 text-sm"><input type="checkbox" name="diagnosed" value="高血圧"> <span>高血圧</span></label>
+                            <label class="flex items-center space-x-2 p-2 border rounded hover:bg-gray-50 text-sm"><input type="checkbox" name="diagnosed" value="高脂血症"> <span>高脂血症</span></label>
+                            <label class="flex items-center space-x-2 p-2 border rounded hover:bg-gray-50 text-sm"><input type="checkbox" name="diagnosed" value="糖尿病"> <span>糖尿病</span></label>
+                            <label class="flex items-center space-x-2 p-2 border rounded hover:bg-gray-50 text-sm"><input type="checkbox" name="diagnosed" value="喘息"> <span>喘息</span></label>
+                            <label class="flex items-center space-x-2 p-2 border rounded hover:bg-gray-50 text-sm"><input type="checkbox" name="diagnosed" value="その他" id="diagOtherCheck" onchange="document.getElementById('diagOtherInp').style.display=this.checked?'block':'none'"> <span>その他</span></label>
+                        </div>
+                        <input type="text" id="diagOtherInp" name="diagnosed_other" style="display:none" placeholder="具体的な内容" class="w-full border p-2 rounded text-sm outline-none focus:border-blue-400">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">本日の体温 (℃)</label>
+                        <input type="text" inputmode="decimal" name="temp" placeholder="36.5" oninput="toHalfWidth(this)" class="mt-1 block w-24 rounded-md border-gray-300 shadow-sm border p-2 text-center outline-none focus:border-blue-400">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">備考</label>
+                        <textarea name="detail" rows="2" class="mt-1 block w-full rounded-md border-gray-300 border p-2 outline-none focus:border-blue-400"></textarea>
+                    </div>
+                </div>
+                <div class="mt-8 flex justify-between">
+                    <button type="button" onclick="nextStep(1)" class="bg-gray-400 text-white px-6 py-2 rounded-lg hover:bg-gray-500 transition">戻る</button>
+                    <button type="button" onclick="nextStep(3)" class="bg-blue-600 text-white px-8 py-2 rounded-lg font-bold hover:bg-blue-700 transition shadow-md">次へ</button>
+                </div>
+            </div>
+
+            <!-- Step 3: Medical History Detail & Life Style -->
+            <div id="step3" class="form-step">
+                <h2 class="text-xl font-semibold mb-2 border-b pb-2 text-gray-800">治療・生活習慣</h2>
+                <p class="text-xs text-gray-400 mb-4 font-medium text-left">※特にお薬を飲んでいない場合や、アレルギーがない場合は、そのまま「送信」してください。</p>
+
+                <div class="space-y-6">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">現在治療中の他の病気</label>
+                            <input type="text" name="history" class="mt-1 block w-full rounded-md border p-2 outline-none focus:border-blue-400">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">妊娠・授乳の有無</label>
+                            <select name="pregnancy" class="mt-1 block w-full border p-2 rounded outline-none focus:border-blue-400">
+                                <option value="なし">なし</option>
+                                <option value="妊娠中">妊娠中</option>
+                                <option value="授乳中">授乳中</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">現在服用中のお薬</label>
+                        <input type="text" name="meds" class="mt-1 block w-full border p-2 rounded outline-none focus:border-blue-400">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">アレルギー</label>
+                        <input type="text" name="allergy" class="mt-1 block w-full border p-2 rounded outline-none focus:border-blue-400">
+                    </div>
+                    <div class="grid grid-cols-2 gap-4 pt-4 border-t">
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700 mb-2">飲酒</label>
+                            <div class="grid grid-cols-3 gap-1 radio-group">
+                                <label><input type="radio" name="alcohol" value="なし" checked class="hidden"><span>なし</span></label>
+                                <label><input type="radio" name="alcohol" value="時々" class="hidden"><span>時々</span></label>
+                                <label><input type="radio" name="alcohol" value="毎日" class="hidden"><span>毎日</span></label>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700 mb-2">喫煙</label>
+                            <div class="grid grid-cols-3 gap-1 radio-group">
+                                <label><input type="radio" name="smoking" value="なし" checked class="hidden"><span>なし</span></label>
+                                <label><input type="radio" name="smoking" value="以前" class="hidden"><span>以前</span></label>
+                                <label><input type="radio" name="smoking" value="現在" class="hidden"><span>現在</span></label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-8 flex justify-between">
+                    <button type="button" onclick="nextStep(2)" class="bg-gray-400 text-white px-6 py-2 rounded-lg hover:bg-gray-500 transition">戻る</button>
+                    <button type="button" onclick="submitForm()" class="bg-green-600 text-white px-10 py-2 rounded-lg font-bold shadow-lg hover:bg-green-700 transition">送信する</button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <!-- 2. Patient Success View -->
+    <div id="successView" class="view-section max-w-2xl mx-auto bg-white rounded-2xl shadow-lg p-12 text-center">
+        <div class="mb-6 inline-flex items-center justify-center w-20 h-20 bg-green-100 text-green-600 rounded-full">
+            <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+        </div>
+        <h2 class="text-3xl font-bold text-gray-800 mb-4">送信が完了しました</h2>
+        <p class="text-gray-600 mb-8 leading-relaxed">ご協力ありがとうございました。<br>受付で名前をお伝えいただき、そのままお待ちください。</p>
+        <button onclick="switchMode('patient')" class="text-blue-600 underline text-sm hover:text-blue-800 transition-colors">新しく入力を始める</button>
+    </div>
+
+    <!-- 3. Reception Login -->
+    <div id="receptionLoginView" class="view-section max-w-md mx-auto bg-white rounded-2xl shadow-lg p-8 mt-10">
+        <h2 class="text-xl font-bold text-center mb-6 text-gray-800 border-b pb-4">受付管理ログイン</h2>
+        <div class="space-y-4 pt-4">
+            <div>
+                <label class="text-sm font-medium text-gray-600 text-left block">パスワードを入力してください</label>
+                <input type="password" id="loginPw" class="w-full mt-1 border-2 border-gray-200 rounded-lg p-3 text-center text-xl tracking-widest focus:border-blue-500 outline-none transition-colors" placeholder="****">
+            </div>
+            <button onclick="checkPassword()" class="w-full bg-gray-800 text-white py-3 rounded-lg font-bold hover:bg-gray-900 transition-colors shadow-md">認証</button>
+            <p class="text-xs text-center text-gray-400">初期パスワードは 1111 です</p>
+        </div>
+    </div>
+
+    <!-- 4. Reception Dashboard -->
+    <div id="receptionView" class="view-section max-w-4xl mx-auto bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100">
+        <div class="bg-gray-800 p-6 text-white flex justify-between items-center">
+            <h1 class="text-xl font-bold flex items-center">
+                <svg class="w-6 h-6 mr-2 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
+                受付管理
+            </h1>
+            <div class="flex items-center space-x-4">
+                <span id="entryCount" class="bg-blue-600 text-white px-3 py-1 rounded-full text-xs font-bold">0件</span>
+                <button onclick="showSettings()" class="text-xs bg-gray-600 px-3 py-1 rounded hover:bg-gray-500 transition-colors">設定</button>
+            </div>
+        </div>
+        <div class="p-6">
+            <div id="entryList" class="space-y-4">
+                <p class="text-center text-gray-500 py-10 font-medium">データはありません</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Detailed View Modal -->
+    <div id="detailModal" class="hidden fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+            <div class="bg-blue-50 p-4 flex justify-between items-center border-b border-blue-100">
+                <h3 class="font-bold text-lg text-blue-800">問診詳細内容</h3>
+                <button onclick="closeModal('detailModal')" class="text-gray-400 hover:text-gray-600 transition-colors text-2xl">&times;</button>
+            </div>
+            <div class="p-6 overflow-y-auto space-y-4 text-sm" id="detailContent"></div>
+            <div class="p-4 bg-gray-50 flex space-x-3 border-t">
+                <button onclick="closeModal('detailModal')" class="flex-1 bg-white border border-gray-300 py-2 rounded-xl font-bold text-gray-600 hover:bg-gray-100 transition-colors">閉じる</button>
+                <button id="btnFromDetailToQR" class="flex-1 bg-blue-600 text-white py-2 rounded-xl font-bold hover:bg-blue-700 transition-colors shadow-md">QRを発行</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- QR Display Modal -->
+    <div id="qrModal" class="hidden fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-2xl p-6 max-w-md w-full text-center space-y-4 shadow-2xl">
+            <div class="flex justify-between items-center border-b pb-2">
+                <h3 class="font-bold text-lg" id="modalTitle">問診QRコード</h3>
+                <button onclick="closeModal('qrModal')" class="text-gray-400 hover:text-gray-600 text-2xl transition-colors">&times;</button>
+            </div>
+            <div id="qrcodeContainer" class="bg-white p-2 inline-block"></div>
+            <p class="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Shift_JIS (SJIS) / 全角スペース区切り</p>
+            <div class="bg-gray-50 p-4 rounded-lg text-left text-[10px] font-mono text-gray-500 overflow-y-auto max-h-40 border leading-tight">
+                <p id="textPreview" class="whitespace-pre-wrap"></p>
+            </div>
+            <button onclick="closeModal('qrModal')" class="w-full bg-gray-200 py-3 rounded-xl font-bold hover:bg-gray-300 transition-colors">閉じる</button>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-2xl p-6 max-w-xs w-full text-center space-y-4 shadow-2xl border border-gray-100">
+            <h3 class="font-bold text-lg text-gray-800">設定</h3>
+            <div class="space-y-3">
+                <label class="text-xs text-gray-500 block text-left font-medium">新しいパスワード</label>
+                <input type="password" id="newPw" placeholder="新しいパスワード" class="w-full border p-2 rounded text-center outline-none focus:border-blue-400">
+                <input type="password" id="newPwConfirm" placeholder="確認用入力" class="w-full border p-2 rounded text-center outline-none focus:border-blue-400">
+            </div>
+            <div class="flex space-x-2 pt-2">
+                <button onclick="closeModal('settingsModal')" class="flex-1 bg-gray-200 py-2 rounded font-bold text-sm transition hover:bg-gray-300">キャンセル</button>
+                <button onclick="updatePassword()" class="flex-1 bg-blue-600 text-white py-2 rounded font-bold text-sm transition hover:bg-blue-700">変更</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentStep = 1;
+        let entries = [];
+        let masterPassword = "1111"; 
+        let isReceptionAuthenticated = false;
+
+        // Auto Cleanup at 23:00
+        setInterval(() => {
+            const now = new Date();
+            if (now.getHours() === 23 && now.getMinutes() === 0) {
+                if (entries.length > 0) {
+                    entries = [];
+                    renderEntries();
+                }
+            }
+        }, 30000);
+
+        function switchMode(mode) {
+            document.querySelectorAll('.view-section').forEach(v => v.classList.remove('active'));
+            if (mode === 'patient') {
+                isReceptionAuthenticated = false;
+                document.getElementById('patientView').classList.add('active');
+                document.getElementById('medicalForm').reset();
+                document.querySelectorAll('.input-error').forEach(el => el.classList.remove('input-error'));
+                document.getElementById('diagOtherInp').style.display = 'none';
+                currentStep = 1;
+                nextStep(1);
+            } else if (mode === 'reception') {
+                if (!isReceptionAuthenticated) {
+                    document.getElementById('receptionLoginView').classList.add('active');
+                    document.getElementById('loginPw').value = "";
+                } else {
+                    document.getElementById('receptionView').classList.add('active');
+                    renderEntries();
+                }
+            } else if (mode === 'success') {
+                document.getElementById('successView').classList.add('active');
+            }
+        }
+
+        function toHalfWidth(el) {
+            const val = el.value.replace(/[０-９ー－]/g, s => {
+                if (s === 'ー' || s === '－') return '-';
+                return String.fromCharCode(s.charCodeAt(0) - 0xFEE0);
+            });
+            if (el.value !== val) el.value = val;
+        }
+
+        function clearError(el) {
+            if (el.value.trim() !== "") el.classList.remove('input-error');
+        }
+
+        function checkPassword() {
+            if (document.getElementById('loginPw').value === masterPassword) {
+                isReceptionAuthenticated = true;
+                switchMode('reception');
+            } else {
+                alert('パスワードが正しくありません');
+            }
+        }
+
+        function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+        function showSettings() { document.getElementById('settingsModal').classList.remove('hidden'); }
+
+        function updatePassword() {
+            const newPw = document.getElementById('newPw').value;
+            if (!newPw) { alert('入力してください'); return; }
+            if (newPw !== document.getElementById('newPwConfirm').value) { alert('一致しません'); return; }
+            masterPassword = newPw;
+            alert('変更しました');
+            closeModal('settingsModal');
+        }
+
+        function formatDate(dateStr) {
+            if (!dateStr) return 'なし';
+            const parts = dateStr.split('-');
+            if (parts.length !== 3) return dateStr;
+            return `${parts[0]}/${parts[1]}/${parts[2]}`;
+        }
+
+        function validateStep1() {
+            const form = document.getElementById('medicalForm');
+            const fields = [
+                { name: 'name', label: 'お名前' },
+                { name: 'dob', label: '生年月日' },
+                { name: 'phone', label: '電話番号' },
+                { name: 'address', label: '住所' }
+            ];
+            let missing = [];
+            fields.forEach(f => {
+                const el = form[f.name];
+                if (!el.value.trim()) {
+                    missing.push(f.label);
+                    el.classList.add('input-error');
+                } else el.classList.remove('input-error');
+            });
+            if (missing.length > 0) {
+                alert("必須項目を入力してください：\n・" + missing.join("\n・"));
+                return false;
+            }
+            return true;
+        }
+
+        function nextStep(step) {
+            if (step > currentStep && currentStep === 1 && !validateStep1()) return;
+            document.querySelectorAll('.form-step').forEach(s => s.classList.remove('active'));
+            document.getElementById(`step${step}`).classList.add('active');
+            document.getElementById('progress').style.width = (step/3 * 100) + '%';
+            currentStep = step;
+            window.scrollTo(0, 0);
+        }
+
+        function submitForm() {
+            if (!validateStep1()) { nextStep(1); return; }
+            const form = document.getElementById('medicalForm');
+            const fd = new FormData(form);
+            entries.unshift({
+                id: Date.now(),
+                timestamp: new Date().toLocaleTimeString(),
+                data: Object.fromEntries(fd),
+                diagnosed: fd.getAll('diagnosed')
+            });
+            switchMode('success');
+        }
+
+        function renderEntries() {
+            const list = document.getElementById('entryList');
+            document.getElementById('entryCount').innerText = `${entries.length}件`;
+            if (entries.length === 0) {
+                list.innerHTML = '<p class="text-center text-gray-500 py-10 font-medium">データはありません</p>';
+                return;
+            }
+            list.innerHTML = entries.map(e => `
+                <div class="border rounded-xl p-4 flex justify-between items-center bg-white shadow-sm transition-all hover:border-blue-200">
+                    <div>
+                        <div class="font-bold text-lg text-gray-800">${e.data.name} <span class="text-sm font-normal text-gray-500">(${e.data.kana || 'なし'})</span></div>
+                        <div class="text-xs text-gray-400 mt-1 font-medium">生年月日：${formatDate(e.data.dob)} | 時刻：${e.timestamp}</div>
+                    </div>
+                    <div class="flex space-x-2">
+                        <button onclick="showDetails(${e.id})" class="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg text-sm font-bold border border-gray-300 hover:bg-gray-200 transition-colors">詳細</button>
+                        <button onclick="showQR(${e.id})" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow hover:bg-blue-700 transition-colors">QR発行</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function showDetails(id) {
+            const e = entries.find(x => x.id === id);
+            if (!e) return;
+            const diag = e.diagnosed.map(i => i === 'その他' && e.data.diagnosed_other ? `その他(${e.data.diagnosed_other})` : i).join(', ') || 'なし';
+            
+            document.getElementById('detailContent').innerHTML = `
+                <div class="grid grid-cols-3 gap-y-3 border-b pb-4">
+                    <div class="text-gray-500 font-bold">お名前</div><div class="col-span-2 text-gray-900 font-medium">${e.data.name} (${e.data.kana || 'なし'})</div>
+                    <div class="text-gray-500 font-bold">生年月日</div><div class="col-span-2 text-gray-900 font-medium">${formatDate(e.data.dob)}</div>
+                    <div class="text-gray-500 font-bold">電話番号</div><div class="col-span-2 text-gray-900 font-medium">${e.data.phone}</div>
+                    <div class="text-gray-500 font-bold">住所</div><div class="col-span-2 text-gray-900 font-medium">${e.data.address}</div>
+                </div>
+                <div class="grid grid-cols-3 gap-y-3 border-b py-4">
+                    <div class="text-gray-500 font-bold">体温 / 既往</div><div class="col-span-2 font-bold text-gray-900">${e.data.temp || '未入力'} ℃ / ${diag}</div>
+                    <div class="text-gray-500 font-bold">備考</div><div class="col-span-2 text-gray-900 font-medium">${e.data.detail || 'なし'}</div>
+                </div>
+                <div class="grid grid-cols-3 gap-y-3 pt-4">
+                    <div class="text-gray-500 font-bold">現在治療中</div><div class="col-span-2 text-gray-900 font-medium">${e.data.history || 'なし'}</div>
+                    <div class="text-gray-500 font-bold">妊娠授乳</div><div class="col-span-2 text-gray-900 font-medium">${e.data.pregnancy}</div>
+                    <div class="text-gray-500 font-bold">服用薬</div><div class="col-span-2 text-gray-900 font-medium">${e.data.meds || 'なし'}</div>
+                    <div class="text-gray-500 font-bold">アレルギー</div><div class="col-span-2 text-gray-900 font-medium">${e.data.allergy || 'なし'}</div>
+                    <div class="text-gray-500 font-bold">飲酒 / 喫煙</div><div class="col-span-2 text-gray-900 font-medium">${e.data.alcohol} / ${e.data.smoking}</div>
+                </div>
+            `;
+            document.getElementById('btnFromDetailToQR').onclick = () => { closeModal('detailModal'); showQR(e.id); };
+            document.getElementById('detailModal').classList.remove('hidden');
+        }
+
+        function showQR(id) {
+            const e = entries.find(x => x.id === id);
+            if (!e || typeof Encoding === 'undefined') return;
+
+            const sep = "　"; // Full-width space
+            const nl = "\n";   // Standard LF for line breaks to avoid double lines
+
+            // Formatting: Label + Full-width space + Value
+            let text = "【問診票】" + nl;
+            text += `氏名${sep}${e.data.name}` + nl;
+            text += `ふりがな${sep}${e.data.kana || 'なし'}` + nl;
+            text += `生年月日${sep}${formatDate(e.data.dob)}` + nl; 
+            text += `電話${sep}${e.data.phone}` + nl;
+            text += `住所${sep}${e.data.address}` + nl;
+            text += `きっかけ${sep}${e.data.referral}` + nl;
+            text += `体温${sep}${e.data.temp || '未入力'}℃` + nl;
+            const processedDiag = e.diagnosed.map(i => i === 'その他' && e.data.diagnosed_other ? `その他(${e.data.diagnosed_other})` : i);
+            text += `指摘疾患${sep}${processedDiag.join(',') || 'なし'}` + nl;
+            text += `詳細備考${sep}${e.data.detail || 'なし'}` + nl;
+            text += `他既往歴${sep}${e.data.history || 'なし'}` + nl;
+            text += `妊娠授乳${sep}${e.data.pregnancy}` + nl;
+            text += `服用薬${sep}${e.data.meds || 'なし'}` + nl;
+            text += `アレルギー${sep}${e.data.allergy || 'なし'}` + nl;
+            text += `飲酒${sep}${e.data.alcohol}` + nl;
+            text += `喫煙${sep}${e.data.smoking}`;
+
+            document.getElementById('textPreview').innerText = text;
+            document.getElementById('modalTitle').innerText = `${e.data.name} 様`;
+
+            // Convert to Shift_JIS binary
+            const unicodeArray = Encoding.stringToCode(text);
+            const sjisByteArray = Encoding.convert(unicodeArray, { to: 'SJIS', from: 'UNICODE' });
+            const binaryString = sjisByteArray.map(b => String.fromCharCode(b)).join('');
+
+            const container = document.getElementById('qrcodeContainer');
+            container.innerHTML = "";
+            const qr = qrcode(0, 'M');
+            qr.addData(binaryString, 'Byte'); 
+            qr.make();
+            container.innerHTML = qr.createSvgTag({cellSize: 4, margin: 2});
+
+            document.getElementById('qrModal').classList.remove('hidden');
+        }
+    </script>
+</body>
+</html>
